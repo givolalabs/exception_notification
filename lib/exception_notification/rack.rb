@@ -2,37 +2,54 @@ module ExceptionNotification
   class Rack
     class CascadePassException < Exception; end
 
+    attr_reader :available_options
+
     def initialize(app, options = {})
       @app = app
 
-      ExceptionNotifier.ignored_exceptions = options.delete(:ignore_exceptions) if options.key?(:ignore_exceptions)
-      ExceptionNotifier.error_grouping = options.delete(:error_grouping) if options.key?(:error_grouping)
-      ExceptionNotifier.error_grouping_period = options.delete(:error_grouping_period) if options.key?(:error_grouping_period)
-      ExceptionNotifier.notification_trigger = options.delete(:notification_trigger) if options.key?(:notification_trigger)
+      @available_options = [
+        :ignore_exceptions,
+        :error_grouping,
+        :error_grouping_period,
+        :error_grouping_cache,
+        :notification_trigger,
+        :ignore_if,
+        :ignore_crawlers,
+        :ignore_cascade_pass
+      ]
+
+      notifiers = options.dup.delete_if{ |opt_name, _|
+        available_options.include?(opt_name.to_sym)
+      }
+
+      ExceptionNotifier.ignored_exceptions = options.fetch(:ignore_exceptions) if options.key?(:ignore_exceptions)
+      ExceptionNotifier.error_grouping = options.fetch(:error_grouping) if options.key?(:error_grouping)
+      ExceptionNotifier.error_grouping_period = options.fetch(:error_grouping_period) if options.key?(:error_grouping_period)
+      ExceptionNotifier.notification_trigger = options.fetch(:notification_trigger) if options.key?(:notification_trigger)
 
       if options.key?(:error_grouping_cache)
-        ExceptionNotifier.error_grouping_cache = options.delete(:error_grouping_cache)
+        ExceptionNotifier.error_grouping_cache = options.fetch(:error_grouping_cache)
       elsif defined?(Rails)
         ExceptionNotifier.error_grouping_cache = Rails.cache
       end
 
       if options.key?(:ignore_if)
-        rack_ignore = options.delete(:ignore_if)
+        rack_ignore = options.fetch(:ignore_if)
         ExceptionNotifier.ignore_if do |exception, opts|
           opts.key?(:env) && rack_ignore.call(opts[:env], exception)
         end
       end
 
       if options.key?(:ignore_crawlers)
-        ignore_crawlers = options.delete(:ignore_crawlers)
+        ignore_crawlers = options.fetch(:ignore_crawlers)
         ExceptionNotifier.ignore_if do |exception, opts|
           opts.key?(:env) && from_crawler(opts[:env], ignore_crawlers)
         end
       end
 
-      @ignore_cascade_pass = options.delete(:ignore_cascade_pass) { true }
+      @ignore_cascade_pass = options.fetch(:ignore_cascade_pass) { true }
 
-      options.each do |notifier_name, opts|
+      notifiers.each do |notifier_name, opts|
         ExceptionNotifier.register_exception_notifier(notifier_name, opts)
       end
     end
